@@ -1,0 +1,23 @@
+services:
+  go-happy-web-requests:
+    build: .
+    restart: unless-stopped
+    environment:
+      - PORT=${PORT:-8080}
+      - API_TOKEN=${API_TOKEN}
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${PORT:-8080}/api/v1/fetch"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+    labels:
+      - "coolify.managed=true"
+      - "coolify.name=go-happy-web-requests"

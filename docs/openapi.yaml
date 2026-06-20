@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: go-happy-web-requests
+  description: |
+    High-performance web scraping microservice using the "Happy Eyeballs" concurrency pattern.
+    Accepts a target URL and a list of proxies, fires requests in parallel, and returns the
+    first successful response. Slower or failing requests are immediately canceled.
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/v1/fetch:
+    post:
+      summary: Fetch a URL through competing proxies
+      description: |
+        Initiates concurrent requests through all provided proxies. Returns the first
+        successful (2xx) response and cancels all slower/failing requests.
+      operationId: fetchURL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchRequest'
+            example:
+              url: "https://example.com/data"
+              proxies:
+                - "http://user:pass@proxy1.com:8080"
+                - "http://user:pass@proxy2.com:8080"
+                - "http://user:pass@proxy3.com:8080"
+              mode: "http"
+              timeout_seconds: 15
+      responses:
+        '200':
+          description: Successful fetch — winning proxy returned first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchSuccessResponse'
+              example:
+                status: "success"
+                winning_proxy: "http://user:pass@proxy2.com:8080"
+                content: "<!DOCTYPE html><html>...</html>"
+                time_taken_ms: 450
+        '400':
+          description: Bad request — invalid JSON or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_json:
+                  summary: Malformed JSON body
+                  value:
+                    status: "error"
+                    message: "Invalid JSON"
+                missing_url:
+                  summary: URL field is empty
+                  value:
+                    status: "error"
+                    message: "url is required"
+                missing_proxies:
+                  summary: No proxies provided
+                  value:
+                    status: "error"
+                    message: "at least one proxy is required"
+        '401':
+          description: Unauthorized — missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+              example:
+                error: "Unauthorized"
+        '405':
+          description: Method not allowed — only POST is accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                message: "Method not allowed"
+        '500':
+          description: All proxies failed or timed out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                message: "All proxies failed or timed out."
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Token must match the `API_TOKEN` environment variable on the server.
+
+  schemas:
+    FetchRequest:
+      type: object
+      required:
+        - url
+        - proxies
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Target URL to fetch
+        proxies:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uri
+          description: List of proxy URLs to race concurrently
+        mode:
+          type: string
+          enum:
+            - http
+            - playwright
+          default: http
+          description: Fetch mode. `http` for standard requests, `playwright` for headless browser (not yet implemented).
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          default: 15
+          description: Maximum time in seconds before all requests are canceled
+
+    FetchSuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+        winning_proxy:
+          type: string
+          description: Proxy URL that returned the fastest successful response
+        content:
+          type: string
+          description: Raw response body (HTML, JSON, etc.)
+        time_taken_ms:
+          type: integer
+          format: int64
+          description: Total time taken in milliseconds
+      required:
+        - status
+        - winning_proxy
+        - content
+        - time_taken_ms
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - error
+        message:
+          type: string
+          description: Human-readable error description
+      required:
+        - status
+        - message
