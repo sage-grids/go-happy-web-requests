@@ -12,8 +12,24 @@ func dummyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
-func TestAuth_NoTokenSet_AllowsRequest(t *testing.T) {
+func TestAuth_NoTokenSet_FailsClosed(t *testing.T) {
 	os.Unsetenv("API_TOKEN")
+	os.Unsetenv("AUTH_DISABLED")
+
+	handler := Auth(dummyHandler)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 when API_TOKEN is unset, got %d", rr.Code)
+	}
+}
+
+func TestAuth_AuthDisabled_AllowsRequest(t *testing.T) {
+	os.Unsetenv("API_TOKEN")
+	t.Setenv("AUTH_DISABLED", "true")
 
 	handler := Auth(dummyHandler)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -22,7 +38,7 @@ func TestAuth_NoTokenSet_AllowsRequest(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+		t.Errorf("expected 200 with AUTH_DISABLED=true, got %d", rr.Code)
 	}
 	if rr.Body.String() != "ok" {
 		t.Errorf("expected body 'ok', got %q", rr.Body.String())

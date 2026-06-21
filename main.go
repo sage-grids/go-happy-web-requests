@@ -10,6 +10,11 @@ import (
 )
 
 func main() {
+	if os.Getenv("API_TOKEN") == "" && os.Getenv("AUTH_DISABLED") != "true" {
+		log.Fatal("refusing to start: API_TOKEN is not set (set AUTH_DISABLED=true to run without authentication)")
+	}
+
+	http.HandleFunc("/health", handler.Health)
 	http.HandleFunc("/api/v1/fetch", middleware.Auth(handler.Fetch))
 
 	port := os.Getenv("PORT")

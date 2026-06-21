@@ -5,11 +5,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/sage-grids/go-happy-web-requests/internal/models"
 	"github.com/sage-grids/go-happy-web-requests/internal/racing"
 )
+
+const (
+	// defaultMaxRequestBytes caps the inbound request body. Override with MAX_REQUEST_BYTES.
+	defaultMaxRequestBytes = 1 << 20 // 1 MiB
+	// defaultMaxProxies caps how many proxies a single request may race. Override with MAX_PROXIES.
+	defaultMaxProxies = 50
+)
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
 
 func Fetch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -19,6 +37,8 @@ func Fetch(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(models.FetchResponse{Status: "error", Message: "Method not allowed"})
 		return
 	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, int64(envInt("MAX_REQUEST_BYTES", defaultMaxRequestBytes)))
 
 	var reqBody models.FetchRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
@@ -36,6 +56,12 @@ func Fetch(w http.ResponseWriter, r *http.Request) {
 	if len(reqBody.Proxies) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(models.FetchResponse{Status: "error", Message: "at least one proxy is required"})
+		return
+	}
+
+	if maxProxies := envInt("MAX_PROXIES", defaultMaxProxies); len(reqBody.Proxies) > maxProxies {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(models.FetchResponse{Status: "error", Message: fmt.Sprintf("too many proxies: %d (max %d)", len(reqBody.Proxies), maxProxies)})
 		return
 	}
 

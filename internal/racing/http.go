@@ -6,14 +6,31 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 
 	"github.com/sage-grids/go-happy-web-requests/internal/models"
 )
+
+// defaultMaxResponseBytes caps how much of a target response is read into
+// memory. Override with MAX_RESPONSE_BYTES.
+const defaultMaxResponseBytes = 10 << 20 // 10 MiB
+
+func maxResponseBytes() int64 {
+	if v := os.Getenv("MAX_RESPONSE_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultMaxResponseBytes
+}
 
 func RaceHTTP(ctx context.Context, targetURL string, proxies []string) (models.RaceResult, error) {
 	if len(proxies) == 0 {
 		return models.RaceResult{}, fmt.Errorf("no proxies provided")
 	}
+
+	maxBytes := maxResponseBytes()
 
 	resultCh := make(chan models.RaceResult, 1)
 	errCh := make(chan error, len(proxies))
@@ -44,7 +61,7 @@ func RaceHTTP(ctx context.Context, targetURL string, proxies []string) (models.R
 			defer resp.Body.Close()
 
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				body, err := io.ReadAll(resp.Body)
+				body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
 				if err != nil {
 					errCh <- err
 					return

@@ -236,6 +236,37 @@ func TestFetch_ContentTypeIsJSON(t *testing.T) {
 	}
 }
 
+func TestFetch_TooManyProxies(t *testing.T) {
+	t.Setenv("MAX_PROXIES", "2")
+
+	rr := doFetch(t, models.FetchRequest{
+		URL:     "http://example.com",
+		Proxies: []string{"http://p1:8080", "http://p2:8080", "http://p3:8080"},
+	})
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rr.Code)
+	}
+
+	resp := decodeResponse(t, rr)
+	if resp.Status != "error" {
+		t.Errorf("expected status 'error', got %q", resp.Status)
+	}
+}
+
+func TestHealth(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rr := httptest.NewRecorder()
+	Health(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type 'application/json', got %q", ct)
+	}
+}
+
 func TestFetch_CustomTimeout(t *testing.T) {
 	target := newTestTargetServer("timeout test")
 	defer target.Close()
